@@ -2,12 +2,14 @@ package api
 
 import (
 	"fmt"
+	"net/http"
 	"net/url"
 	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"pansou/config"
+	"pansou/model"
 	"pansou/util"
 )
 
@@ -86,6 +88,8 @@ func AuthMiddleware() gin.HandlerFunc {
 		// 定义公开接口（不需要认证）
 		publicPaths := []string{
 			"/api/auth/login",
+			"/api/auth/register",
+			"/api/auth/captcha",
 			"/api/auth/logout",
 			"/api/health", // 健康检查接口可选择是否需要认证
 		}
@@ -102,10 +106,7 @@ func AuthMiddleware() gin.HandlerFunc {
 		// 获取Authorization头
 		authHeader := c.GetHeader("Authorization")
 		if authHeader == "" {
-			c.JSON(401, gin.H{
-				"error": "未授权：缺少认证令牌",
-				"code":  "AUTH_TOKEN_MISSING",
-			})
+			c.JSON(http.StatusUnauthorized, model.NewErrorResponse(401, "未授权：缺少认证令牌"))
 			c.Abort()
 			return
 		}
@@ -113,10 +114,7 @@ func AuthMiddleware() gin.HandlerFunc {
 		// 解析Bearer token
 		const bearerPrefix = "Bearer "
 		if !strings.HasPrefix(authHeader, bearerPrefix) {
-			c.JSON(401, gin.H{
-				"error": "未授权：令牌格式错误",
-				"code":  "AUTH_TOKEN_INVALID_FORMAT",
-			})
+			c.JSON(http.StatusUnauthorized, model.NewErrorResponse(401, "未授权：令牌格式错误"))
 			c.Abort()
 			return
 		}
@@ -126,10 +124,7 @@ func AuthMiddleware() gin.HandlerFunc {
 		// 验证token
 		claims, err := util.ValidateToken(tokenString, config.AppConfig.AuthJWTSecret)
 		if err != nil {
-			c.JSON(401, gin.H{
-				"error": "未授权：令牌无效或已过期",
-				"code":  "AUTH_TOKEN_INVALID",
-			})
+			c.JSON(http.StatusUnauthorized, model.NewErrorResponse(401, "未授权：令牌无效或已过期"))
 			c.Abort()
 			return
 		}

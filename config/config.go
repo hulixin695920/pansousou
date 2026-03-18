@@ -49,10 +49,14 @@ type Config struct {
 	HTTPMaxConns     int           // 最大连接数
 	// 认证相关配置
 	AuthEnabled     bool              // 是否启用认证
-	AuthUsers       map[string]string // 用户名:密码映射
+	AuthUsers       map[string]string // 用户名:密码映射（环境变量方式，DB未配置时使用）
 	AuthTokenExpiry time.Duration     // Token有效期
 	AuthJWTSecret   string            // JWT签名密钥
-
+	// 数据库配置（MySQL用户体系）
+	DBEnabled bool   // 是否启用数据库
+	DBDSN     string // MySQL连接串，格式: user:password@tcp(host:port)/dbname?charset=utf8mb4&parseTime=True
+	// 验证码配置
+	CaptchaEnabled bool // 是否启用图形验证码（登录/注册时需验证）
 }
 
 // 全局配置实例
@@ -100,12 +104,21 @@ func Init() {
 		HTTPWriteTimeout: getHTTPWriteTimeout(),
 		HTTPIdleTimeout:  getHTTPIdleTimeout(),
 		HTTPMaxConns:     getHTTPMaxConns(),
-		// 认证相关配置
+		// 数据库配置（需在认证前读取，因 AuthEnabled 依赖 DBEnabled）
+		DBEnabled: getDBEnabled(),
+		DBDSN:     getDBDSN(),
+		// 认证相关配置（DB_ENABLED=true 时自动启用认证，兼容 MySQL 用户体系）
 		AuthEnabled:     getAuthEnabled(),
 		AuthUsers:       getAuthUsers(),
 		AuthTokenExpiry: getAuthTokenExpiry(),
 		AuthJWTSecret:   getAuthJWTSecret(),
-
+		// 验证码配置
+		CaptchaEnabled: getCaptchaEnabled(),
+	}
+	
+	// 兼容 MySQL 用户体系：DB_ENABLED=true 时自动启用认证，保护搜索等接口
+	if AppConfig.DBEnabled && !AppConfig.AuthEnabled {
+		AppConfig.AuthEnabled = true
 	}
 	
 	// 应用GC配置
@@ -583,6 +596,47 @@ func getAuthJWTSecret() string {
 		secret = "pansou-default-secret-" + strconv.FormatInt(time.Now().Unix(), 10)
 	}
 	return secret
+}
+
+// 从环境变量获取数据库是否启用
+func getDBEnabled() bool {
+	enabled := os.Getenv("DB_ENABLED")
+	return enabled == "true" || enabled == "1"
+}
+
+// 从环境变量获取MySQL连接串
+// 格式: user:password@tcp(host:port)/dbname?charset=utf8mb4&parseTime=True
+// 也可使用 DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, DB_NAME 分别配置
+func getDBDSN() string {
+	dsn := os.Getenv("DB_DSN")
+	if dsn != "" {
+		return dsn
+	}
+	// 从分项配置构建DSN
+	host := os.Getenv("DB_HOST")
+	if host == "" {
+		host = "127.0.0.1"
+	}
+	port := os.Getenv("DB_PORT")
+	if port == "" {
+		port = "3306"
+	}
+	user := os.Getenv("DB_USER")
+	if user == "" {
+		return ""
+	}
+	password := os.Getenv("DB_PASSWORD")
+	dbname := os.Getenv("DB_NAME")
+	if dbname == "" {
+		dbname = "pansou"
+	}
+	return user + ":" + password + "@tcp(" + host + ":" + port + ")/" + dbname + "?charset=utf8mb4&parseTime=True"
+}
+
+// 从环境变量获取验证码是否启用
+func getCaptchaEnabled() bool {
+	enabled := os.Getenv("CAPTCHA_ENABLED")
+	return enabled == "true" || enabled == "1"
 }
 
 // 应用GC设置

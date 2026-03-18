@@ -14,11 +14,13 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/joho/godotenv"
 	"golang.org/x/net/netutil"
 
 	"pansou/api"
 	"pansou/config"
 	"pansou/plugin"
+	"pansou/repository"
 	"pansou/service"
 	"pansou/util"
 	"pansou/util/cache"
@@ -117,7 +119,15 @@ func main() {
 
 // initApp 初始化应用程序
 func initApp() {
-	// 初始化配置
+	// 加载 .env 文件（如果存在），.env 中的变量会覆盖系统环境变量
+	if err := godotenv.Load(); err != nil {
+		// 忽略文件不存在的错误，允许无 .env 运行
+		if !os.IsNotExist(err) {
+			log.Printf("加载 .env 文件失败: %v", err)
+		}
+	}
+
+	// 初始化配置（从环境变量读取，已包含 .env 加载的值）
 	config.Init()
 
 	// 初始化HTTP客户端
@@ -148,6 +158,13 @@ func initApp() {
 
 	// 确保异步插件系统初始化
 	plugin.InitAsyncPluginSystem()
+
+	// 初始化数据库（MySQL用户体系）
+	if config.AppConfig.DBEnabled {
+		if err := repository.InitDatabase(); err != nil {
+			log.Fatalf("数据库初始化失败: %v", err)
+		}
+	}
 }
 
 // startServer 启动Web服务器
@@ -238,6 +255,9 @@ func startServer() {
 		} 
 	}
 
+	// 关闭数据库连接
+	repository.CloseDB()
+
 	// 设置关闭超时时间
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
@@ -279,6 +299,13 @@ func printServiceInfo(port string, pluginManager *plugin.PluginManager) {
 	}
 	if !hasProxy {
 		fmt.Println("未使用代理")
+	}
+
+	// 输出数据库信息
+	if config.AppConfig.DBEnabled {
+		fmt.Println("MySQL用户体系已启用")
+	} else if config.AppConfig.AuthEnabled {
+		fmt.Println("认证模式: 环境变量(AUTH_USERS)")
 	}
 
 	// 输出并发信息

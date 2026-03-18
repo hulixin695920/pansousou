@@ -31,6 +31,9 @@ tmp/
 .idea/
 .vscode/
 
+# 环境配置（运行时通过 env_file 注入，不打包进镜像）
+.env
+
 # 其他
 Dockerfile
-.dockerignore 
+.dockerignore

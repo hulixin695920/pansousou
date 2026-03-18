@@ -3,6 +3,7 @@ package api
 import (
 	"github.com/gin-gonic/gin"
 	"pansou/config"
+	"pansou/model"
 	"pansou/plugin"
 	"pansou/service"
 	"pansou/util"
@@ -28,13 +29,17 @@ func SetupRouter(searchService *service.SearchService) *gin.Engine {
 	// 定义API路由组
 	api := r.Group("/api")
 	{
-		// 认证接口（不需要认证，由中间件公开路径处理）
+		// 认证接口（login/register/logout 为公开路径）
 		auth := api.Group("/auth")
 		{
+			auth.GET("/captcha", CaptchaHandler)
 			auth.POST("/login", LoginHandler)
+			auth.POST("/register", RegisterHandler)
 			auth.POST("/verify", VerifyHandler)
 			auth.POST("/logout", LogoutHandler)
 		}
+		// 用户资料接口（需认证）
+		api.GET("/user/profile", ProfileHandler)
 		
 		// 搜索接口 - 支持POST和GET两种方式
 		api.POST("/search", SearchHandler)
@@ -59,21 +64,21 @@ func SetupRouter(searchService *service.SearchService) *gin.Engine {
 			channels := config.AppConfig.DefaultChannels
 			channelsCount := len(channels)
 			
-			response := gin.H{
-				"status":         "ok",
-				"auth_enabled":   config.AppConfig.AuthEnabled, // 添加认证状态
+			data := gin.H{
+				"status":          "ok",
+				"auth_enabled":    config.AppConfig.AuthEnabled,
+				"db_enabled":      config.AppConfig.DBEnabled,
+				"captcha_enabled": config.AppConfig.CaptchaEnabled,
 				"plugins_enabled": pluginsEnabled,
 				"channels":        channels,
 				"channels_count":  channelsCount,
 			}
-			
 			// 只有当插件启用时才返回插件相关信息
 			if pluginsEnabled {
-				response["plugin_count"] = pluginCount
-				response["plugins"] = pluginNames
+				data["plugin_count"] = pluginCount
+				data["plugins"] = pluginNames
 			}
-			
-			c.JSON(200, response)
+			c.JSON(200, model.NewSuccessResponse(data))
 		})
 	}
 	

@@ -1,7 +1,7 @@
 # 构建阶段
 # 使用 --platform=$BUILDPLATFORM 确保构建器始终在运行 Actions 的机器的原生架构上运行 (通常是 linux/amd64)
 # $BUILDPLATFORM 是 buildx 自动提供的变量
-FROM --platform=$BUILDPLATFORM docker.xuanyuan.me/library/golang:1.24-alpine AS builder
+FROM --platform=$BUILDPLATFORM docker.1ms.run/library/golang:1.24-alpine AS builder
 
 # 安装构建依赖
 RUN apk add --no-cache git ca-certificates tzdata
@@ -35,7 +35,7 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} go build -ldflags="-s -w -extl
 
 # 运行阶段
 # 这一阶段会根据 buildx 的 --platform 参数选择正确的基础镜像 (例如 linux/arm64 会拉取 arm64/alpine)
-FROM docker.xuanyuan.me/library/alpine:3.19
+FROM docker.1ms.run/library/alpine:3.19
 
 # 添加运行时依赖
 RUN apk add --no-cache ca-certificates tzdata

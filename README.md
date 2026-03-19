@@ -544,6 +544,21 @@ curl "http://localhost:8888/api/search?kw=唐朝诡事录&filter=%7B%22include%2
 curl "http://localhost:8888/api/search?kw=速度与激情&wait_full=true"
 ```
 
+### 流式搜索接口（需 STREAM_ENABLED=true）
+
+流式接口每收到一批结果即推送，使用 NDJSON 格式（每行一个 JSON 对象），无需等待全部完成。
+
+**接口地址**：`/api/search/stream`  
+**请求方法**：`GET` / `POST`  
+**参数**：与普通搜索接口相同
+
+```bash
+# 启用 STREAM_ENABLED=true 后
+curl "http://localhost:8888/api/search/stream?kw=速度与激情"
+```
+
+**响应格式**：每行一个 `{code, message, data}` 对象，`data` 为当前累计的搜索结果。
+
 **成功响应**（统一格式 `{code, message, data}`）：
 
 ```json

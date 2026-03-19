@@ -45,6 +45,12 @@ func SetupRouter(searchService *service.SearchService) *gin.Engine {
 		api.POST("/search", SearchHandler)
 		api.GET("/search", SearchHandler) // 添加GET方式支持
 		
+		// 流式搜索接口（需 STREAM_ENABLED=true 启用）
+		if config.AppConfig.StreamEnabled {
+			api.POST("/search/stream", StreamSearchHandler)
+			api.GET("/search/stream", StreamSearchHandler)
+		}
+		
 		// 健康检查接口
 		api.GET("/health", func(c *gin.Context) {
 			// 根据配置决定是否返回插件信息
@@ -69,6 +75,7 @@ func SetupRouter(searchService *service.SearchService) *gin.Engine {
 				"auth_enabled":    config.AppConfig.AuthEnabled,
 				"db_enabled":      config.AppConfig.DBEnabled,
 				"captcha_enabled": config.AppConfig.CaptchaEnabled,
+				"stream_enabled":  config.AppConfig.StreamEnabled,
 				"plugins_enabled": pluginsEnabled,
 				"channels":        channels,
 				"channels_count":  channelsCount,

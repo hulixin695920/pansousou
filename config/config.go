@@ -57,6 +57,8 @@ type Config struct {
 	DBDSN     string // MySQL连接串，格式: user:password@tcp(host:port)/dbname?charset=utf8mb4&parseTime=True
 	// 验证码配置
 	CaptchaEnabled bool // 是否启用图形验证码（登录/注册时需验证）
+	// 流式搜索配置
+	StreamEnabled bool // 是否启用流式搜索接口 /api/search/stream
 }
 
 // 全局配置实例
@@ -114,6 +116,8 @@ func Init() {
 		AuthJWTSecret:   getAuthJWTSecret(),
 		// 验证码配置
 		CaptchaEnabled: getCaptchaEnabled(),
+		// 流式搜索配置
+		StreamEnabled: getStreamEnabled(),
 	}
 	
 	// 兼容 MySQL 用户体系：DB_ENABLED=true 时自动启用认证，保护搜索等接口
@@ -636,6 +640,12 @@ func getDBDSN() string {
 // 从环境变量获取验证码是否启用
 func getCaptchaEnabled() bool {
 	enabled := os.Getenv("CAPTCHA_ENABLED")
+	return enabled == "true" || enabled == "1"
+}
+
+// 从环境变量获取流式搜索是否启用
+func getStreamEnabled() bool {
+	enabled := os.Getenv("STREAM_ENABLED")
 	return enabled == "true" || enabled == "1"
 }
 

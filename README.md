@@ -548,6 +548,8 @@ curl "http://localhost:8888/api/search?kw=速度与激情&wait_full=true"
 
 流式接口每收到一批结果即推送，使用 NDJSON 格式（每行一个 JSON 对象），无需等待全部完成。
 
+为保证客户端能持续解析到数据，`/api/search/stream` 会跳过 `gzip` 压缩（不影响普通接口）。
+
 **接口地址**：`/api/search/stream`  
 **请求方法**：`GET` / `POST`  
 **参数**：与普通搜索接口相同

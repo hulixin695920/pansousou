@@ -39,6 +39,13 @@ func GzipMiddleware() gin.HandlerFunc {
 			c.Next()
 			return
 		}
+
+		// 流式接口需要持续 flush，gzip 中间件会先缓存再统一压缩发送，
+		// 会破坏流式体验（客户端看起来像只收到一小段）。
+		if strings.HasPrefix(c.Request.URL.Path, "/api/search/stream") {
+			c.Next()
+			return
+		}
 		
 		// 检查客户端是否支持gzip
 		if !strings.Contains(c.Request.Header.Get("Accept-Encoding"), "gzip") {

@@ -1,6 +1,8 @@
 package service
 
 import (
+	"crypto/md5"
+	"encoding/hex"
 	"net/http"
 	"strings"
 	"sync"
@@ -118,7 +120,12 @@ func (s *SearchService) SearchStream(
 		return send(buildStreamResponse(nil, keyword, resultType, cloudTypes))
 	}
 
-	resultChan := make(chan []model.SearchResult, totalSources+5)
+	type streamBatch struct {
+		isTG    bool
+		results []model.SearchResult
+	}
+
+	resultChan := make(chan streamBatch, totalSources+5)
 	var wg sync.WaitGroup
 
 	// TG 搜索
@@ -127,7 +134,7 @@ func (s *SearchService) SearchStream(
 		go func() {
 			defer wg.Done()
 			results, _ := s.searchTG(keyword, channels, forceRefresh)
-			resultChan <- results
+			resultChan <- streamBatch{isTG: true, results: results}
 		}()
 	}
 
@@ -149,7 +156,7 @@ func (s *SearchService) SearchStream(
 				return plugin.Search(kw, extParams)
 			}, cacheKey, ext)
 			if err != nil {
-				resultChan <- nil
+				resultChan <- streamBatch{isTG: false, results: nil}
 				return
 			}
 			// 只保留有链接的结果
@@ -159,7 +166,7 @@ func (s *SearchService) SearchStream(
 					filtered = append(filtered, r)
 				}
 			}
-			resultChan <- filtered
+			resultChan <- streamBatch{isTG: false, results: filtered}
 		}()
 	}
 
@@ -169,32 +176,125 @@ func (s *SearchService) SearchStream(
 		close(resultChan)
 	}()
 
-	var allResults []model.SearchResult
+	streamStart := time.Now()
+	// 方案2：后台继续更新缓存后，在同一个连接里继续推送（轮询插件主缓存）
+	streamMaxWait := config.AppConfig.PluginTimeout
+	if streamMaxWait <= 0 {
+		streamMaxWait = 30 * time.Second
+	}
+	pollInterval := 1 * time.Second
+
+	var tgResults []model.SearchResult
+	var pluginResults []model.SearchResult // 初始阶段从 AsyncSearch 返回；后续轮询会以主缓存为准
+
+	lastSentHash := ""
+
+	sendIfChanged := func(allResults []model.SearchResult) error {
+		sortResultsByTimeAndKeywords(allResults)
+		h := hashSearchResults(allResults)
+		if h == lastSentHash {
+			return nil
+		}
+		lastSentHash = h
+		resp := buildStreamResponse(allResults, keyword, resultType, cloudTypes)
+		return send(resp)
+	}
+
+	// 初始阶段：按 goroutine 返回的批次推送（4 秒快速路径通常先出部分）
 	for batch := range resultChan {
-		if batch != nil && len(batch) > 0 {
-			allResults = mergeSearchResults(allResults, batch)
-			sortResultsByTimeAndKeywords(allResults)
-			resp := buildStreamResponse(allResults, keyword, resultType, cloudTypes)
-			if err := send(resp); err != nil {
-				return err
-			}
+		if len(batch.results) == 0 {
+			continue
+		}
+
+		if batch.isTG {
+			tgResults = mergeSearchResults(tgResults, batch.results)
+		} else {
+			pluginResults = mergeSearchResults(pluginResults, batch.results)
+		}
+
+		allResults := mergeSearchResults(tgResults, pluginResults)
+		if err := sendIfChanged(allResults); err != nil {
+			return err
 		}
 	}
 
-	// 最终缓存更新
-	if cacheInitialized && config.AppConfig.CacheEnabled && len(allResults) > 0 {
-		go func(res []model.SearchResult, kw string, key string) {
-			ttl := time.Duration(config.AppConfig.CacheTTLMinutes) * time.Minute
-			if enhancedTwoLevelCache != nil {
-				data, err := enhancedTwoLevelCache.GetSerializer().Serialize(res)
-				if err == nil {
-					enhancedTwoLevelCache.SetBothLevels(key, data, ttl)
-				}
-			}
-		}(allResults, keyword, cacheKey)
+	// 后台持续阶段：轮询插件主缓存，直到超时或结果不再变化
+	// 注意：只在包含插件搜索的场景下轮询。
+	shouldPollPlugins := sourceType == "all" || sourceType == "plugin"
+	if !shouldPollPlugins {
+		return nil
+	}
+	if !cacheInitialized || !config.AppConfig.CacheEnabled || enhancedTwoLevelCache == nil {
+		return nil
 	}
 
-	return nil
+	ticker := time.NewTicker(pollInterval)
+	defer ticker.Stop()
+
+	// 只有在首次成功读到缓存之后，才开始计数“稳定次数”，避免还没等到后台写入就提前退出。
+	gotCache := false
+	stableCount := 0
+	lastCacheHash := ""
+
+	for {
+		if time.Since(streamStart) >= streamMaxWait {
+			return nil
+		}
+
+		select {
+		case <-ticker.C:
+			// 读取插件主缓存的全量（可能从部分 → 最终逐步增长）
+			data, hit, err := enhancedTwoLevelCache.Get(cacheKey)
+			if err != nil || !hit || len(data) == 0 {
+				continue
+			}
+
+			var cachedPluginResults []model.SearchResult
+			if err := enhancedTwoLevelCache.GetSerializer().Deserialize(data, &cachedPluginResults); err != nil {
+				continue
+			}
+
+			// 仍然只保留有链接的结果（和主逻辑一致）
+			filtered := make([]model.SearchResult, 0, len(cachedPluginResults))
+			for _, r := range cachedPluginResults {
+				if len(r.Links) > 0 {
+					filtered = append(filtered, r)
+				}
+			}
+
+			cacheMerged := mergeSearchResults(tgResults, filtered)
+
+			// 用合并后的结果做 hash，避免前端重复刷
+			cacheHash := hashSearchResults(cacheMerged)
+			if !gotCache {
+				gotCache = true
+				lastCacheHash = cacheHash
+				stableCount = 0
+
+				if err := sendIfChanged(cacheMerged); err != nil {
+					return err
+				}
+				continue
+			}
+
+			if cacheHash == lastCacheHash {
+				stableCount++
+				if stableCount >= 3 {
+					return nil
+				}
+				continue
+			}
+
+			stableCount = 0
+			lastCacheHash = cacheHash
+
+			if err := sendIfChanged(cacheMerged); err != nil {
+				return err
+			}
+		default:
+			time.Sleep(50 * time.Millisecond)
+		}
+	}
 }
 
 // buildStreamResponse 构建流式响应（与 Search 的响应格式一致）
@@ -223,4 +323,16 @@ func buildStreamResponse(allResults []model.SearchResult, keyword string, result
 		MergedByType: mergedLinks,
 	}
 	return filterResponseByType(resp, resultType)
+}
+
+func hashSearchResults(results []model.SearchResult) string {
+	// 轻量 hash：基于 UniqueID + 标题（减少碰撞概率）
+	h := md5.New()
+	for _, r := range results {
+		h.Write([]byte(r.UniqueID))
+		h.Write([]byte("|"))
+		h.Write([]byte(r.Title))
+		h.Write([]byte(";"))
+	}
+	return hex.EncodeToString(h.Sum(nil))
 }

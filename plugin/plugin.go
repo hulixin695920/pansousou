@@ -748,10 +748,13 @@ func (p *BaseAsyncPlugin) AsyncSearch(
 		}
 	}()
 	
-	// 获取响应超时时间
+	// 获取响应超时时间：wait_full=true 时使用完整超时(30s)，否则使用快速响应超时(4s)
 	responseTimeout := defaultAsyncResponseTimeout
 	if config.AppConfig != nil {
 		responseTimeout = config.AppConfig.AsyncResponseTimeoutDur
+	}
+	if waitFull, ok := ext["_wait_full"].(bool); ok && waitFull && config.AppConfig != nil {
+		responseTimeout = config.AppConfig.PluginTimeout
 	}
 	
 	// 等待响应超时或结果
@@ -912,10 +915,13 @@ func (p *BaseAsyncPlugin) AsyncSearchWithResult(
 		}
 	}()
 	
-	// 等待结果或超时
+	// 等待结果或超时：wait_full=true 时使用完整超时(30s)，否则使用快速响应超时(4s)
 	responseTimeout := defaultAsyncResponseTimeout
 	if config.AppConfig != nil {
 		responseTimeout = config.AppConfig.AsyncResponseTimeoutDur
+	}
+	if waitFull, ok := ext["_wait_full"].(bool); ok && waitFull && config.AppConfig != nil {
+		responseTimeout = config.AppConfig.PluginTimeout
 	}
 	
 	select {

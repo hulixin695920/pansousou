@@ -18,4 +18,5 @@ type SearchRequest struct {
 	Ext          map[string]interface{} `json:"ext"`                   // 扩展参数，用于传递给插件的自定义参数
 	CloudTypes   []string               `json:"cloud_types"`           // 指定返回的网盘类型列表，不指定则返回所有类型
 	Filter       *FilterConfig          `json:"filter,omitempty"`      // 过滤配置，用于过滤返回结果
+	WaitFull     bool                   `json:"wait_full"`             // 是否等待完整结果（默认4秒快速返回部分，设为true则等待最多30秒获取完整结果）
 }

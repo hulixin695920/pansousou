@@ -143,6 +143,9 @@ func SearchHandler(c *gin.Context) {
 			}
 		}
 
+		// 处理wait_full参数，是否等待完整结果
+		waitFull := c.Query("wait_full") == "true" || c.Query("wait_full") == "1"
+
 		req = model.SearchRequest{
 			Keyword:      keyword,
 			Channels:     channels,
@@ -154,6 +157,7 @@ func SearchHandler(c *gin.Context) {
 			CloudTypes:   cloudTypes, // 添加cloud_types到请求中
 			Ext:          ext,
 			Filter:       filter,
+			WaitFull:     waitFull,
 		}
 	} else {
 		// POST方式：从请求体获取
@@ -203,8 +207,17 @@ func SearchHandler(c *gin.Context) {
 	// fmt.Printf("🔧 [调试] 搜索参数: keyword=%s, channels=%v, concurrency=%d, refresh=%v, resultType=%s, sourceType=%s, plugins=%v, cloudTypes=%v, ext=%v\n",
 	//	req.Keyword, req.Channels, req.Concurrency, req.ForceRefresh, req.ResultType, req.SourceType, req.Plugins, req.CloudTypes, req.Ext)
 
+	// 将 wait_full 注入到 ext，供插件层使用
+	ext := req.Ext
+	if ext == nil {
+		ext = make(map[string]interface{})
+	}
+	if req.WaitFull {
+		ext["_wait_full"] = true
+	}
+
 	// 执行搜索
-	result, err := searchService.Search(req.Keyword, req.Channels, req.Concurrency, req.ForceRefresh, req.ResultType, req.SourceType, req.Plugins, req.CloudTypes, req.Ext)
+	result, err := searchService.Search(req.Keyword, req.Channels, req.Concurrency, req.ForceRefresh, req.ResultType, req.SourceType, req.Plugins, req.CloudTypes, ext)
 
 	if err != nil {
 		response := model.NewErrorResponse(500, "搜索失败: "+err.Error())

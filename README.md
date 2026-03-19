@@ -460,6 +460,7 @@ curl -X POST http://localhost:8888/api/auth/logout
 | channels | string[] | 否 | 搜索的频道列表，不提供则使用默认配置 |
 | conc | number | 否 | 并发搜索数量，不提供则自动设置为频道数+插件数+10 |
 | refresh | boolean | 否 | 强制刷新，不使用缓存，便于调试和获取最新数据 |
+| wait_full | boolean | 否 | 是否等待完整结果。默认 false：约 4 秒快速返回部分结果；设为 true：最多等待约 30 秒返回完整结果 |
 | res | string | 否 | 结果类型：all(返回所有结果)、results(仅返回results)、merge(仅返回merged_by_type)，默认为merge |
 | src | string | 否 | 数据来源类型：all(默认，全部来源)、tg(仅Telegram)、plugin(仅插件) |
 | plugins | string[] | 否 | 指定搜索的插件列表，不指定则搜索全部插件 |
@@ -475,6 +476,7 @@ curl -X POST http://localhost:8888/api/auth/logout
 | channels | string | 否 | 搜索的频道列表，使用英文逗号分隔多个频道，不提供则使用默认配置 |
 | conc | number | 否 | 并发搜索数量，不提供则自动设置为频道数+插件数+10 |
 | refresh | boolean | 否 | 强制刷新，设置为"true"表示不使用缓存 |
+| wait_full | string | 否 | 设置为"true"或"1"表示等待完整结果（最多约30秒），否则约4秒快速返回部分结果 |
 | res | string | 否 | 结果类型：all(返回所有结果)、results(仅返回results)、merge(仅返回merged_by_type)，默认为merge |
 | src | string | 否 | 数据来源类型：all(默认，全部来源)、tg(仅Telegram)、plugin(仅插件) |
 | plugins | string | 否 | 指定搜索的插件列表，使用英文逗号分隔多个插件名，不指定则搜索全部插件 |
@@ -493,6 +495,7 @@ curl -X POST http://localhost:8888/api/search \
     "channels": ["tgsearchers3", "xxx"],
     "conc": 2,
     "refresh": true,
+    "wait_full": true,
     "res": "merge",
     "src": "all",
     "plugins": ["jikepan"],
@@ -536,6 +539,9 @@ curl "http://localhost:8888/api/search?kw=速度与激情&res=merge" \
 
 # 使用过滤器（GET方式需要URL编码JSON）
 curl "http://localhost:8888/api/search?kw=唐朝诡事录&filter=%7B%22include%22%3A%5B%22合集%22%2C%22全集%22%5D%2C%22exclude%22%3A%5B%22预告%22%5D%7D"
+
+# 等待完整结果（一次请求获取全部数据，最多约30秒）
+curl "http://localhost:8888/api/search?kw=速度与激情&wait_full=true"
 ```
 
 **成功响应**（统一格式 `{code, message, data}`）：
